@@ -3,32 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alzein ERP Ultra</title>
-    <!-- ربط ملف التنسيقات -->
+    <title>Alzein ERP Ultra - نظام الإدارة السحابي</title>
     <link rel="stylesheet" href="css/style.css">
-    <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
-    <!-- حاوية التطبيق الرئيسية -->
     <div id="app">
         <header class="app-header neon-border">
             <h1>💎 Alzein ERP Ultra</h1>
-            <div class="status-badge" id="connection-status">🟢 متصل</div>
+            <div class="status-bar">
+                <span id="connection-status" class="status-badge">🟢 متصل</span>
+                <span id="user-info"></span>
+            </div>
         </header>
 
-        <main class="app-content">
+        <nav class="app-nav neon-border">
+            <button class="nav-btn active" data-view="dashboard">📊 لوحة التحكم</button>
+            <button class="nav-btn" data-view="inventory">📦 المخزون</button>
+            <button class="nav-btn" data-view="accounting">💰 المحاسبة</button>
+            <button class="nav-btn" data-view="tools">🔧 الأدوات</button>
+        </nav>
+
+        <main class="app-content" id="main-view">
             <div class="welcome-card rgb-glow">
-                <h2>مرحباً بك في نظام الإدارة السحابي</h2>
-                <p>تم تحميل الهيكل بنجاح. جاري تهيئة الوحدات...</p>
+                <h2>مرحباً بك في نظام Alzein ERP Ultra</h2>
+                <p>نظام إدارة أعمال متكامل بواجهة عصرية</p>
+                <div class="loading-indicator">جاري تحميل الوحدات...</div>
             </div>
         </main>
 
-        <!-- زر الحاسبة العائم -->
-        <div id="calc-fab" class="fab-center pulse">🧮</div>
+        <div id="calculator-fab" class="fab-center pulse">🧮</div>
+        <div id="haptic-feedback"></div>
     </div>
 
-    <!-- ⚠️ مهم جداً: type="module" لتشغيل نظام الاستيراد الحديث -->
     <script type="module" src="js/app.js"></script>
 </body>
 </html>
