@@ -269,4 +269,108 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.error('Unhandled Promise:', e.reason);
 });
-🚀 إضافة الملف الرئيسي للتطبيق (app.js)
+/*--------------------------------🚀 إضافة الملف الرئيسي للتطبيق (app.js)------------------------------------------------------
+/**
+ * Alzein ERP Ultra - Main Application Controller
+ * يربط جميع الوحدات معاً
+ */
+
+// 1. استيراد الوحدات (Imports)
+import { Calculator } from './modules/calculator.js';
+import { Inventory } from './modules/inventory.js';
+import { Accounting } from './modules/accounting.js';
+import { CurrencyUltra } from './modules/currency.js';
+
+// ========================================
+// حالة التطبيق
+// ========================================
+const App = {
+  initialized: false,
+
+  // تهيئة التطبيق
+  init() {
+    console.log('🚀 Starting Alzein ERP...');
+    
+    // تهيئة الأزرار والتنقل
+    this.setupNavigation();
+    
+    // تهيئة الحاسبة (لأنها زر عائم دائم الظهور)
+    Calculator.init();
+    
+    this.initialized = true;
+    console.log('✅ System Ready');
+  },
+
+  // إعداد التنقل بين الشاشات
+  setupNavigation() {
+    const buttons = document.querySelectorAll('.nav-btn');
+    const mainView = document.getElementById('main-view');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        // تغيير الزر النشط
+        buttons.forEach(b => b.classList.remove('active'));
+        e.target.classList.add('active');
+
+        const viewName = e.target.dataset.view;
+        
+        // تأثير تحميل بسيط
+        mainView.innerHTML = `<div class="loading-indicator">جاري تحميل ${viewName}...</div>`;
+
+        // تشغيل الوحدة المطلوبة
+        await this.loadModule(viewName, mainView);
+      });
+    });
+
+    // تحميل لوحة التحكم افتراضياً
+    this.loadModule('dashboard', mainView);
+  },
+
+  // تحميل الوحدة (Module) بناءً على الاسم
+  async loadModule(viewName, container) {
+    // تأخير بسيط لمحاكاة التحميل (اختياري)
+    await new Promise(r => setTimeout(r, 300));
+
+    switch (viewName) {
+      case 'dashboard':
+        container.innerHTML = `
+          <div class="dashboard-view">
+            <div class="welcome-card rgb-glow">
+              <h2>📊 لوحة التحكم</h2>
+              <p>مرحباً بك في نظام Alzein ERP Ultra</p>
+            </div>
+            <div class="stats-grid summary-grid">
+               <div class="summary-card neon-border"><div class="card-icon">📦</div><div class="card-info"><span class="label">إجمالي الأصناف</span><span class="value">4</span></div></div>
+               <div class="summary-card neon-border"><div class="card-icon">💰</div><div class="card-info"><span class="label">الرصيد</span><span class="value">$5,350</span></div></div>
+            </div>
+          </div>
+        `;
+        break;
+
+      case 'inventory':
+        // إنشاء الحاوية ثم استدعاء وحدة المخزون
+        container.innerHTML = `<div class="inventory-view"></div>`;
+        Inventory.init();
+        break;
+
+      case 'accounting':
+        // إنشاء الحاوية ثم استدعاء وحدة المحاسبة
+        container.innerHTML = `<div class="accounting-view"></div>`;
+        Accounting.init();
+        break;
+
+      case 'tools':
+        container.innerHTML = `<div class="tools-view"></div>`;
+        CurrencyUltra.init(); // تحميل محول العملات
+        break;
+        
+      default:
+        container.innerHTML = `<div class="empty-state">الصفحة غير موجودة</div>`;
+    }
+  }
+};
+
+// تشغيل التطبيق عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', () => {
+  App.init();
+});
