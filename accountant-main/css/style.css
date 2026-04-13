@@ -292,4 +292,218 @@ button {
   -webkit-appearance: none;
   appearance: none;
 }
-🎨 إضافة تنسيقات Neon Cyber الكاملة
+/*------------------------------------------------------------------ 🎨 إضافة تنسيقات Neon Cyber---------------------------------- */
+/* ========================================
+   إضافات تصميم الوحدات (Inventory & Accounting)
+   ======================================== */
+
+/* بطاقات المخزون */
+.inventory-container, .accounting-container {
+  padding: 1rem 0;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 0.8rem;
+  background: var(--card-bg);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+  border-radius: 8px;
+  outline: none;
+}
+
+.items-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.item-card {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 12px;
+  position: relative;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.item-sku {
+  background: rgba(0, 245, 255, 0.1);
+  color: var(--neon-cyan);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.item-name {
+  color: white;
+  margin: 0.5rem 0;
+}
+
+.item-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.stat .label { display: block; font-size: 0.7rem; color: var(--text-secondary); }
+.stat .value { font-size: 1.1rem; font-weight: bold; }
+
+.stock-bar-bg {
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.stock-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.stock-status {
+  font-size: 0.8rem;
+  display: block;
+  text-align: right;
+  margin-top: 0.2rem;
+}
+
+/* بطاقات المحاسبة */
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.summary-card {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.balance-card {
+  grid-column: span 2;
+}
+
+.card-icon { font-size: 2rem; }
+.card-info { display: flex; flex-direction: column; }
+.card-info .label { font-size: 0.8rem; color: var(--text-secondary); }
+.card-info .value { font-size: 1.2rem; font-weight: bold; }
+
+.transaction-form {
+  background: var(--card-bg);
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.form-select, .form-input {
+  flex: 1;
+  padding: 0.8rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+  border-radius: 8px;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 1rem;
+  background: var(--gradient-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* سجل القيود */
+.ledger-row {
+  display: flex;
+  align-items: center;
+  padding: 0.8rem;
+  background: var(--card-bg);
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+}
+
+.row-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  margin-left: 1rem;
+}
+
+.row-details { flex: 1; }
+.row-title { font-weight: bold; margin-bottom: 0.2rem; }
+.row-meta { font-size: 0.75rem; color: var(--text-secondary); }
+.row-meta span { margin-left: 0.5rem; }
+
+.row-amount {
+  font-weight: bold;
+  margin-left: 1rem;
+}
+
+.delete-txn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* الحاسبة */
+.calculator-modal {
+  position: fixed;
+  bottom: -100%;
+  left: 0;
+  width: 100%;
+  background: var(--dark-bg);
+  z-index: 2000;
+  transition: bottom 0.3s ease;
+  padding: 1rem;
+  border-top: 2px solid var(--neon-purple);
+}
+
+.calculator-modal.active { bottom: 0; }
+
+.calculator-container { max-width: 400px; margin: 0 auto; }
+
+.calculator-keys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+.calc-btn {
+  padding: 1rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1.2rem;
+  background: rgba(255,255,255,0.1);
+  color: white;
+  cursor: pointer;
+}
+
+.calc-btn-operator { background: rgba(0, 245, 255, 0.2); color: var(--neon-cyan); }
+.calc-btn-equals { background: var(--neon-green); color: black; }
+.calc-btn-send { background: var(--neon-pink); grid-column: span 2; }
