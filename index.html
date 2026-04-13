@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alzein ERP Ultra - نظام الإدارة السحابي</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div id="app">
+        <header class="app-header neon-border">
+            <h1>💎 Alzein ERP Ultra</h1>
+            <div class="status-bar">
+                <span id="connection-status" class="status-badge">🟢 متصل</span>
+                <span id="user-info"></span>
+            </div>
+        </header>
+
+        <nav class="app-nav neon-border">
+            <button class="nav-btn active" data-view="dashboard">📊 لوحة التحكم</button>
+            <button class="nav-btn" data-view="inventory">📦 المخزون</button>
+            <button class="nav-btn" data-view="accounting">💰 المحاسبة</button>
+            <button class="nav-btn" data-view="tools">🔧 الأدوات</button>
+        </nav>
+
+        <main class="app-content" id="main-view">
+            <div class="welcome-card rgb-glow">
+                <h2>مرحباً بك في نظام Alzein ERP Ultra</h2>
+                <p>نظام إدارة أعمال متكامل بواجهة عصرية</p>
+                <div class="loading-indicator">جاري تحميل الوحدات...</div>
+            </div>
+        </main>
+
+        <div id="calculator-fab" class="fab-center pulse">🧮</div>
+        <div id="haptic-feedback"></div>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
+✨ إضافة هيكل HTML الرئيسي
