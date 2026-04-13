@@ -1,376 +1,206 @@
 /**
- * Alzein ERP Ultra - Main Application Entry Point
- * Vanilla JS + Modular Architecture
+ * Alzein ERP Ultra - Main Application Entry
+ * Vanilla JS Modules + Firebase + Offline-First
  */
 
-// ========================================
-// State Management Simple
-// ========================================
+// Core Imports
+import { createState } from './core/state-manager.js';
+import { ErrorHandler } from './core/error-handler.js';
+import { SyncManager } from './core/sync-manager.js';
+import { Security, calculate } from './core/security.js';
+import { PermissionGuard } from './config/roles-permissions.js';
 
-const AppState = {
-  currentUser: null,
-  activeView: 'dashboard',
-  connectionStatus: 'online',
-  
-  // دالة التحديث
-  update(key, value) {
-    this[key] = value;
-    this.notify(key, value);
-  },
-  
-  // إشعار التغييرات
-  notify(key, value) {
-    window.dispatchEvent(new CustomEvent(`state:${key}`, { detail: value }));
+// Firebase
+import { auth, db } from './firebase-config.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+// Modules
+import { Calculator } from './modules/calculator.js';
+import { CurrencyUltra } from './modules/currency.js';
+import { Inventory } from './modules/inventory.js';
+import { Accounting } from './modules/accounting.js';
+
+// Engines
+import { AccountingEngine } from './engines/accounting-engine.js';
+
+class AlzeinApp {
+  constructor() {
+    this.state = createState();
+    this.sync = null;
+    this.accountingEngine = null;
+    this.permissionGuard = null;
+    this._init();
   }
-};
 
-// ========================================
-// UI Controllers
-// ========================================
+  async _init() {
+    try {
+      this.sync = new SyncManager({ db, userId: null });
+      this.accountingEngine = new AccountingEngine(null, db);
+      
+      Calculator.init();
+      await CurrencyUltra.fetchRates();
+      
+      onAuthStateChanged(auth, async (user) => {
+        if (user) await this._onUserLogin(user);
+        else this._onUserLogout();
+      });
+      
+      this._renderAppShell();
+      this._bindGlobalEvents();      
+      console.log('✅ Alzein ERP Ultra Initialized');
+    } catch (error) {
+      ErrorHandler.log(error, { context: 'app:init' });
+      this._showFatalError(error);
+    }
+  }
 
-const UI = {
-  // تهيئة الواجهة
-  init() {
-    this.cacheDOM();
-    this.bindEvents();
-    this.updateConnectionStatus();
-    console.log('✅ UI Initialized');
-  },
-  
-  // حفظ العناصر في الذاكرة
-  cacheDOM() {
-    this.mainView = document.getElementById('main-view');
-    this.navButtons = document.querySelectorAll('.nav-btn');
-    this.connectionStatus = document.getElementById('connection-status');
-    this.calculatorFab = document.getElementById('calculator-fab');
-    this.userInfo = document.getElementById('user-info');
-  },
-  
-  // ربط الأحداث
-  bindEvents() {
-    // التنقل بين الشاشات
-    this.navButtons.forEach(btn => {
-      btn.addEventListener('click', (e) => this.handleNavigation(e));
+  async _onUserLogin(user) {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userData = userDoc.exists() ? userDoc.data() : {};
+      
+      this.state.batch({
+        'user': { ...user, ...userData },
+        'auth.loading': false, 'auth.error': null
+      });
+      
+      this.permissionGuard = new PermissionGuard(userData);
+      this.sync.userId = user.uid;
+      this.accountingEngine.userId = user.uid;
+      
+      await this._syncUserData(user.uid);
+      Inventory.init(user.uid, this.state);
+      Accounting.init(user.uid, this.accountingEngine, this.state);
+      
+      this.state.set('ui.activeView', 'dashboard');
+    } catch (error) {
+      ErrorHandler.log(error, { context: 'app:login' });
+      this.state.set('auth.error', 'فشل تحميل البيانات');
+    }
+  }
+
+  _onUserLogout() {
+    this.state.batch({
+      'user': null, 'auth.loading': false,
+      'inventory.items': [], 'accounting.transactions': []
     });
-    
-    // زر الحاسبة العائم
-    if (this.calculatorFab) {
-      this.calculatorFab.addEventListener('click', () => this.toggleCalculator());
+    this.permissionGuard = null;
+  }
+
+  async _syncUserData(uid) {
+    const localData = this._loadLocalData(uid);
+    // const cloudData = await this._fetchCloudData(uid);
+    // const merged = await this.sync.mergeUserData(cloudData, localData);
+    console.log('[Sync] User data merged for', uid);
+  }
+
+  _loadLocalData(uid) {
+    const data = {};    const collections = ['inventory', 'transactions', 'accounts'];
+    for (const collection of collections) {
+      const key = `alzein_${collection}_${uid}`;
+      try {
+        const raw = localStorage.getItem(key);
+        data[collection] = raw ? JSON.parse(raw) : [];
+      } catch (e) { data[collection] = []; }
     }
-    
-    // مراقبة حالة الاتصال
-    window.addEventListener('online', () => this.updateConnectionStatus(true));
-    window.addEventListener('offline', () => this.updateConnectionStatus(false));
-  },
-  
-  // معالجة التنقل
-  handleNavigation(e) {
-    const view = e.currentTarget.dataset.view;
-    
-    // تحديث الأزرار النشطة
-    this.navButtons.forEach(btn => btn.classList.remove('active'));
-    e.currentTarget.classList.add('active');
-    
-    // تحديث العرض
-    this.renderView(view);
-    AppState.update('activeView', view);
-  },
-  
-  // عرض الشاشة المطلوبة
-  renderView(viewName) {
+    return data;
+  }
+
+  _renderAppShell() {
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.innerHTML = `
+      <div class="app-shell neon-border">
+        <header class="app-header rgb-glow">
+          <h1>Alzein ERP Ultra</h1>
+          <div id="user-info"></div>
+        </header>
+        <nav class="app-nav">
+          <button data-view="dashboard" class="nav-btn">📊 لوحة التحكم</button>
+          <button data-view="inventory" class="nav-btn">📦 المخزون</button>
+          <button data-view="accounting" class="nav-btn">💰 المحاسبة</button>
+          <button data-view="tools" class="nav-btn">🔧 الأدوات</button>
+        </nav>
+        <main class="app-content" id="main-view"></main>
+        <div id="calculator-fab" class="fab-center pulse">🧮</div>
+        <div id="haptic-feedback"></div>
+      </div>
+    `;
+  }
+
+  _bindGlobalEvents() {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const view = e.currentTarget.dataset.view;
+        this.state.set('ui.activeView', view);
+        this._renderView(view);
+      });
+    });
+    document.getElementById('calculator-fab')?.addEventListener('click', () => {
+      this._toggleCalculator();
+    });
+  }
+
+  _renderView(viewName) {
+    const main = document.getElementById('main-view');
     const views = {
-      dashboard: this.renderDashboard(),
-      inventory: this.renderInventory(),
-      accounting: this.renderAccounting(),
-      tools: this.renderTools()
+      dashboard: this._renderDashboard(),      inventory: `<div class="inventory-view"></div>`,
+      accounting: `<div class="accounting-view"></div>`,
+      tools: `<div class="tools-view"></div>`
     };
-    
-    if (this.mainView) {
-      this.mainView.innerHTML = views[viewName] || views.dashboard;
-      this.animateEntry();
+    if (main) {
+      main.innerHTML = views[viewName] || views.dashboard;
+      if (viewName === 'inventory') Inventory.init();
+      if (viewName === 'accounting') Accounting.init();
+      if (viewName === 'tools') CurrencyUltra.init();
     }
-  },
-  
-  // عرض لوحة التحكم
-  renderDashboard() {
+  }
+
+  _renderDashboard() {
+    const summary = Accounting.getDailySummary?.() || {};
     return `
       <div class="dashboard-view">
         <div class="welcome-card rgb-glow">
           <h2>📊 لوحة التحكم</h2>
           <p>نظرة عامة على نشاطك التجاري</p>
         </div>
-        
         <div class="stats-grid">
           <div class="stat-card neon-border">
             <div class="stat-icon">📦</div>
-            <div class="stat-value">0</div>
-            <div class="stat-label">إجمالي الأصناف</div>
-          </div>
-          
-          <div class="stat-card neon-border">
-            <div class="stat-icon">💰</div>
-            <div class="stat-value">$0.00</div>
-            <div class="stat-label">الرصيد الحالي</div>
-          </div>
-          
-          <div class="stat-card neon-border">
-            <div class="stat-icon">📈</div>
-            <div class="stat-value">0</div>
+            <div class="stat-value">${summary.count || 0}</div>
             <div class="stat-label">المعاملات اليوم</div>
           </div>
-        </div>
-      </div>
-    `;
-  },
-  
-  // عرض المخزون
-  renderInventory() {
-    return `
-      <div class="inventory-view">
-        <div class="welcome-card rgb-glow">
-          <h2>📦 إدارة المخزون</h2>
-          <p>متابعة الأصناف والكميات</p>
-        </div>
-        <div class="info-message">جاري تحميل وحدة المخزون...</div>
-      </div>
-    `;
-  },
-  
-  // عرض المحاسبة
-  renderAccounting() {
-    return `
-      <div class="accounting-view">
-        <div class="welcome-card rgb-glow">
-          <h2>💰 المحاسبة المالية</h2>
-          <p>إدارة الحسابات والمعاملات</p>
-        </div>
-        <div class="info-message">جاري تحميل وحدة المحاسبة...</div>
-      </div>
-    `;
-  },
-  
-  // عرض الأدوات
-  renderTools() {
-    return `
-      <div class="tools-view">
-        <div class="welcome-card rgb-glow">
-          <h2>🔧 الأدوات الذكية</h2>
-          <p>حاسبة، محول عملات، والمزيد</p>
-        </div>
-        <div class="info-message">جاري تحميل الأدوات...</div>
-      </div>
-    `;
-  },
-  
-  // تأثير الدخول
-  animateEntry() {
-    const cards = document.querySelectorAll('.welcome-card, .stat-card');
-    cards.forEach((card, index) => {
-      card.style.animation = `slideUp 0.5s ease ${index * 0.1}s both`;
-    });
-  },
-  
-  // تحديث حالة الاتصال
-  updateConnectionStatus(isOnline = navigator.onLine) {
-    if (this.connectionStatus) {
-      if (isOnline) {
-        this.connectionStatus.textContent = '🟢 متصل';
-        this.connectionStatus.style.background = 'rgba(0, 255, 136, 0.2)';
-        this.connectionStatus.style.color = 'var(--neon-green)';
-        this.connectionStatus.style.borderColor = 'var(--neon-green)';
-      } else {
-        this.connectionStatus.textContent = '🔴 غير متصل';
-        this.connectionStatus.style.background = 'rgba(255, 0, 85, 0.2)';
-        this.connectionStatus.style.color = '#ff0055';
-        this.connectionStatus.style.borderColor = '#ff0055';
-      }
-    }
-    AppState.update('connectionStatus', isOnline ? 'online' : 'offline');
-  },
-  
-  // تبديل الحاسبة
-  toggleCalculator() {
-    console.log('🧮 Calculator toggled');
-    showToast('جاري فتح الحاسبة...', 'info');
-  }
-};
-
-// ========================================
-// Utility Functions
-// ========================================
-
-function showToast(message, type = 'info') {
-  // إنشاء عنصر Toast
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--card-bg);
-    border: 2px solid var(--neon-cyan);
-    color: var(--text-primary);
-    padding: 1rem 2rem;
-    border-radius: 8px;
-    z-index: 9999;
-    animation: slideUp 0.3s ease;
-    box-shadow: var(--shadow-neon);
-  `;
-  
-  document.body.appendChild(toast);
-  
-  // إخفاء بعد 3 ثواني
-  setTimeout(() => {
-    toast.style.animation = 'slideUp 0.3s ease reverse';
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-function formatCurrency(amount, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency
-  }).format(amount);
-}
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-// ========================================
-// Initialization
-// ========================================
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 Alzein ERP Ultra Starting...');
-  
-  // تهيئة الواجهة
-  UI.init();
-  
-  // إظهار رسالة ترحيب
-  setTimeout(() => {
-    showToast('مرحباً بك في Alzein ERP Ultra! ✨', 'success');
-  }, 500);
-  
-  console.log('✅ Application Ready');
-});
-
-// ========================================
-// Error Handling
-// ========================================
-
-window.addEventListener('error', (e) => {
-  console.error('Application Error:', e.error);
-  showToast('حدث خطأ غير متوقع', 'error');
-});
-
-window.addEventListener('unhandledrejection', (e) => {
-  console.error('Unhandled Promise:', e.reason);
-});
-/*--------------------------------🚀 إضافة الملف الرئيسي للتطبيق (app.js)------------------------------------------------------
-/**
- * Alzein ERP Ultra - Main Application Controller
- * يربط جميع الوحدات معاً
- */
-
-// 1. استيراد الوحدات (Imports)
-import { Calculator } from './modules/calculator.js';
-import { Inventory } from './modules/inventory.js';
-import { Accounting } from './modules/accounting.js';
-import { CurrencyUltra } from './modules/currency.js';
-
-// ========================================
-// حالة التطبيق
-// ========================================
-const App = {
-  initialized: false,
-
-  // تهيئة التطبيق
-  init() {
-    console.log('🚀 Starting Alzein ERP...');
-    
-    // تهيئة الأزرار والتنقل
-    this.setupNavigation();
-    
-    // تهيئة الحاسبة (لأنها زر عائم دائم الظهور)
-    Calculator.init();
-    
-    this.initialized = true;
-    console.log('✅ System Ready');
-  },
-
-  // إعداد التنقل بين الشاشات
-  setupNavigation() {
-    const buttons = document.querySelectorAll('.nav-btn');
-    const mainView = document.getElementById('main-view');
-
-    buttons.forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        // تغيير الزر النشط
-        buttons.forEach(b => b.classList.remove('active'));
-        e.target.classList.add('active');
-
-        const viewName = e.target.dataset.view;
-        
-        // تأثير تحميل بسيط
-        mainView.innerHTML = `<div class="loading-indicator">جاري تحميل ${viewName}...</div>`;
-
-        // تشغيل الوحدة المطلوبة
-        await this.loadModule(viewName, mainView);
-      });
-    });
-
-    // تحميل لوحة التحكم افتراضياً
-    this.loadModule('dashboard', mainView);
-  },
-
-  // تحميل الوحدة (Module) بناءً على الاسم
-  async loadModule(viewName, container) {
-    // تأخير بسيط لمحاكاة التحميل (اختياري)
-    await new Promise(r => setTimeout(r, 300));
-
-    switch (viewName) {
-      case 'dashboard':
-        container.innerHTML = `
-          <div class="dashboard-view">
-            <div class="welcome-card rgb-glow">
-              <h2>📊 لوحة التحكم</h2>
-              <p>مرحباً بك في نظام Alzein ERP Ultra</p>
-            </div>
-            <div class="stats-grid summary-grid">
-               <div class="summary-card neon-border"><div class="card-icon">📦</div><div class="card-info"><span class="label">إجمالي الأصناف</span><span class="value">4</span></div></div>
-               <div class="summary-card neon-border"><div class="card-icon">💰</div><div class="card-info"><span class="label">الرصيد</span><span class="value">$5,350</span></div></div>
-            </div>
+          <div class="stat-card neon-border">
+            <div class="stat-icon">💰</div>
+            <div class="stat-value">$${(summary.income - summary.expense || 0).toLocaleString()}</div>
+            <div class="stat-label">صافي اليوم</div>
           </div>
-        `;
-        break;
-
-      case 'inventory':
-        // إنشاء الحاوية ثم استدعاء وحدة المخزون
-        container.innerHTML = `<div class="inventory-view"></div>`;
-        Inventory.init();
-        break;
-
-      case 'accounting':
-        // إنشاء الحاوية ثم استدعاء وحدة المحاسبة
-        container.innerHTML = `<div class="accounting-view"></div>`;
-        Accounting.init();
-        break;
-
-      case 'tools':
-        container.innerHTML = `<div class="tools-view"></div>`;
-        CurrencyUltra.init(); // تحميل محول العملات
-        break;
-        
-      default:
-        container.innerHTML = `<div class="empty-state">الصفحة غير موجودة</div>`;
-    }
+        </div>
+      </div>
+    `;
   }
-};
 
-// تشغيل التطبيق عند تحميل الصفحة
-document.addEventListener('DOMContentLoaded', () => {
-  App.init();
-});
+  _toggleCalculator() {
+    const calc = document.getElementById('calculator-modal') || document.getElementById('calc-modal');
+    if (calc) calc.classList.toggle('active');
+  }
+
+  _showFatalError(error) {
+    document.getElementById('app').innerHTML = `
+      <div class="error-screen neon-border">
+        <h2>⚠️ خطأ في التهيئة</h2>
+        <p>${error.message}</p>
+        <button onclick="location.reload()">إعادة المحاولة</button>
+      </div>
+    `;
+  }}
+
+// Initialize
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => new AlzeinApp());
+} else {
+  new AlzeinApp();
+}
+
+export { AlzeinApp };
