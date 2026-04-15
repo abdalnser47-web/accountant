@@ -1,206 +1,445 @@
 /**
  * Alzein ERP Ultra - Main Application Entry
- * Vanilla JS Modules + Firebase + Offline-First
+ * Vanilla JS Modules Architecture
+ * State Management + Event Delegation
  */
 
-// Core Imports
-import { createState } from './core/state-manager.js';
-import { ErrorHandler } from './core/error-handler.js';
-import { SyncManager } from './core/sync-manager.js';
-import { Security, calculate } from './core/security.js';
-import { PermissionGuard } from './config/roles-permissions.js';
+// Import utilities
+import { StorageUtils } from './utils/storage.js';
+import { CryptoUtils } from './utils/crypto.js';
+import { showToast } from './utils/toast.js';
 
-// Firebase
-import { auth, db } from './firebase-config.js';
-import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+// Import modules (to be implemented)
+// import { Auth } from './modules/auth.js';
+// import { Accounting } from './modules/accounting.js';
+// import { CurrencyUltra } from './modules/currency.js';
+// import { Calculator } from './modules/calculator.js';
 
-// Modules
-import { Calculator } from './modules/calculator.js';
-import { CurrencyUltra } from './modules/currency.js';
-import { Inventory } from './modules/inventory.js';
-import { Accounting } from './modules/accounting.js';
+// Application State
+const AppState = {
+    user: null,
+    pin: null,
+    privacyMode: false,
+    defaultCurrency: 'USD',
+    exchangeRates: {},
+    data: {
+        people: [],
+        transactions: [],
+        accounts: [],
+        settings: {}
+    },
+    ui: {
+        currentScreen: 'dashboard',
+        modals: {}
+    }
+};
 
-// Engines
-import { AccountingEngine } from './engines/accounting-engine.js';
+// DOM Cache
+const DOM = {
+    app: null,
+    screens: {},
+    loading: null,
+    toastContainer: null,
+    fab: null,
+    privacyToggle: null
+};
 
+/**
+ * Main Application Class
+ */
 class AlzeinApp {
-  constructor() {
-    this.state = createState();
-    this.sync = null;
-    this.accountingEngine = null;
-    this.permissionGuard = null;
-    this._init();
-  }
-
-  async _init() {
-    try {
-      this.sync = new SyncManager({ db, userId: null });
-      this.accountingEngine = new AccountingEngine(null, db);
-      
-      Calculator.init();
-      await CurrencyUltra.fetchRates();
-      
-      onAuthStateChanged(auth, async (user) => {
-        if (user) await this._onUserLogin(user);
-        else this._onUserLogout();
-      });
-      
-      this._renderAppShell();
-      this._bindGlobalEvents();      
-      console.log('✅ Alzein ERP Ultra Initialized');
-    } catch (error) {
-      ErrorHandler.log(error, { context: 'app:init' });
-      this._showFatalError(error);
+    constructor() {
+        this.state = AppState;
+        this.dom = DOM;
+        this.initialized = false;
     }
-  }
 
-  async _onUserLogin(user) {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      const userData = userDoc.exists() ? userDoc.data() : {};
-      
-      this.state.batch({
-        'user': { ...user, ...userData },
-        'auth.loading': false, 'auth.error': null
-      });
-      
-      this.permissionGuard = new PermissionGuard(userData);
-      this.sync.userId = user.uid;
-      this.accountingEngine.userId = user.uid;
-      
-      await this._syncUserData(user.uid);
-      Inventory.init(user.uid, this.state);
-      Accounting.init(user.uid, this.accountingEngine, this.state);
-      
-      this.state.set('ui.activeView', 'dashboard');
-    } catch (error) {
-      ErrorHandler.log(error, { context: 'app:login' });
-      this.state.set('auth.error', 'فشل تحميل البيانات');
+    /**
+     * Initialize Application
+     */
+    async init() {
+        console.log('🚀 Alzein ERP Ultra - Initializing...');
+        
+        // Cache DOM elements
+        this.cacheDOM();
+        
+        // Load persisted state
+        await this.loadState();
+        
+        // Apply privacy mode if saved
+        this.applyPrivacyMode(this.state.privacyMode);
+        
+        // Setup event listeners
+        this.bindEvents();
+        
+        // Hide loading screen
+        this.hideLoading();
+        
+        // Show appropriate screen
+        this.showScreen(this.state.user ? 'dashboard' : 'pin');
+        
+        this.initialized = true;
+        console.log('✅ Alzein ERP Ultra - Ready');
+        
+        // Dispatch ready event for modules
+        document.dispatchEvent(new CustomEvent('alzein:ready', { detail: this.state }));
     }
-  }
 
-  _onUserLogout() {
-    this.state.batch({
-      'user': null, 'auth.loading': false,
-      'inventory.items': [], 'accounting.transactions': []
-    });
-    this.permissionGuard = null;
-  }
-
-  async _syncUserData(uid) {
-    const localData = this._loadLocalData(uid);
-    // const cloudData = await this._fetchCloudData(uid);
-    // const merged = await this.sync.mergeUserData(cloudData, localData);
-    console.log('[Sync] User data merged for', uid);
-  }
-
-  _loadLocalData(uid) {
-    const data = {};    const collections = ['inventory', 'transactions', 'accounts'];
-    for (const collection of collections) {
-      const key = `alzein_${collection}_${uid}`;
-      try {
-        const raw = localStorage.getItem(key);
-        data[collection] = raw ? JSON.parse(raw) : [];
-      } catch (e) { data[collection] = []; }
+    /**
+     * Cache DOM Elements
+     */
+    cacheDOM() {
+        this.dom.app = document.getElementById('app');
+        this.dom.loading = document.getElementById('loading-screen');
+        this.dom.toastContainer = document.getElementById('toast-container');
+        this.dom.fab = document.getElementById('fab-add');
+        this.dom.privacyToggle = document.getElementById('privacy-toggle');
+        
+        // Cache screens
+        document.querySelectorAll('.screen').forEach(screen => {
+            this.dom.screens[screen.id.replace('-screen', '')] = screen;
+        });
     }
-    return data;
-  }
 
-  _renderAppShell() {
-    const app = document.getElementById('app');
-    if (!app) return;
-    app.innerHTML = `
-      <div class="app-shell neon-border">
-        <header class="app-header rgb-glow">
-          <h1>Alzein ERP Ultra</h1>
-          <div id="user-info"></div>
-        </header>
-        <nav class="app-nav">
-          <button data-view="dashboard" class="nav-btn">📊 لوحة التحكم</button>
-          <button data-view="inventory" class="nav-btn">📦 المخزون</button>
-          <button data-view="accounting" class="nav-btn">💰 المحاسبة</button>
-          <button data-view="tools" class="nav-btn">🔧 الأدوات</button>
-        </nav>
-        <main class="app-content" id="main-view"></main>
-        <div id="calculator-fab" class="fab-center pulse">🧮</div>
-        <div id="haptic-feedback"></div>
-      </div>
-    `;
-  }
-
-  _bindGlobalEvents() {
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const view = e.currentTarget.dataset.view;
-        this.state.set('ui.activeView', view);
-        this._renderView(view);
-      });
-    });
-    document.getElementById('calculator-fab')?.addEventListener('click', () => {
-      this._toggleCalculator();
-    });
-  }
-
-  _renderView(viewName) {
-    const main = document.getElementById('main-view');
-    const views = {
-      dashboard: this._renderDashboard(),      inventory: `<div class="inventory-view"></div>`,
-      accounting: `<div class="accounting-view"></div>`,
-      tools: `<div class="tools-view"></div>`
-    };
-    if (main) {
-      main.innerHTML = views[viewName] || views.dashboard;
-      if (viewName === 'inventory') Inventory.init();
-      if (viewName === 'accounting') Accounting.init();
-      if (viewName === 'tools') CurrencyUltra.init();
+    /**
+     * Load State from Storage
+     */
+    async loadState() {
+        // Load PIN (encrypted)
+        const encryptedPin = StorageUtils.get('pin', { decrypt: true });
+        if (encryptedPin) {
+            this.state.pin = encryptedPin;
+        }
+        
+        // Load user data
+        const userData = StorageUtils.get('user_data');
+        if (userData) {
+            this.state.data = { ...this.state.data, ...userData };
+            this.state.user = { id: 'local_user' }; // Mock authenticated
+        }
+        
+        // Load settings
+        const settings = StorageUtils.get('settings');
+        if (settings) {
+            this.state.defaultCurrency = settings.defaultCurrency || 'USD';
+            this.state.privacyMode = settings.privacyMode || false;
+            this.state.exchangeRates = settings.exchangeRates || {};
+        }
+        
+        // Load exchange rates cache
+        const ratesCache = StorageUtils.get('currency_rates');
+        if (ratesCache?.rates) {
+            this.state.exchangeRates = ratesCache.rates;
+        }
     }
-  }
 
-  _renderDashboard() {
-    const summary = Accounting.getDailySummary?.() || {};
-    return `
-      <div class="dashboard-view">
-        <div class="welcome-card rgb-glow">
-          <h2>📊 لوحة التحكم</h2>
-          <p>نظرة عامة على نشاطك التجاري</p>
-        </div>
-        <div class="stats-grid">
-          <div class="stat-card neon-border">
-            <div class="stat-icon">📦</div>
-            <div class="stat-value">${summary.count || 0}</div>
-            <div class="stat-label">المعاملات اليوم</div>
-          </div>
-          <div class="stat-card neon-border">
-            <div class="stat-icon">💰</div>
-            <div class="stat-value">$${(summary.income - summary.expense || 0).toLocaleString()}</div>
-            <div class="stat-label">صافي اليوم</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+    /**
+     * Bind Global Event Listeners
+     */
+    bindEvents() {
+        // Privacy Toggle
+        this.dom.privacyToggle?.addEventListener('click', () => {
+            this.state.privacyMode = !this.state.privacyMode;
+            this.applyPrivacyMode(this.state.privacyMode);
+            this.saveSettings();
+            showToast(
+                this.state.privacyMode ? '🔒 وضع الخصوصية: مفعل' : '👁️ وضع الخصوصية: معطل',
+                'info'
+            );
+        });
 
-  _toggleCalculator() {
-    const calc = document.getElementById('calculator-modal') || document.getElementById('calc-modal');
-    if (calc) calc.classList.toggle('active');
-  }
+        // FAB Button
+        this.dom.fab?.addEventListener('click', () => {
+            this.openModal('transaction-form');
+        });
 
-  _showFatalError(error) {
-    document.getElementById('app').innerHTML = `
-      <div class="error-screen neon-border">
-        <h2>⚠️ خطأ في التهيئة</h2>
-        <p>${error.message}</p>
-        <button onclick="location.reload()">إعادة المحاولة</button>
-      </div>
-    `;
-  }}
+        // Bottom Navigation
+        document.querySelectorAll('.nav-item').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const screen = e.currentTarget.dataset.screen;
+                this.navigate(screen);
+            });
+        });
 
-// Initialize
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new AlzeinApp());
-} else {
-  new AlzeinApp();
+        // Modal Close Buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-close') || 
+                e.target.classList.contains('modal')) {
+                this.closeModal();
+            }
+        });
+
+        // Keyboard support for PIN
+        document.addEventListener('keydown', (e) => {
+            if (this.dom.screens.pin?.classList.contains('hidden')) return;
+            
+            if (e.key >= '0' && e.key <= '9') {
+                this.handlePinInput(e.key);
+            } else if (e.key === 'Backspace') {
+                this.handlePinBackspace();
+            } else if (e.key === 'Enter') {
+                this.verifyPIN();
+            }
+        });
+
+        // Online/Offline Detection
+        window.addEventListener('online', () => {
+            console.log('🌐 Online');
+            showToast('🔄 متصل بالإنترنت', 'success');
+            // Trigger sync if needed
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('📴 Offline');
+            showToast('⚠️ وضع غير متصل', 'warning');
+        });
+    }
+
+    /**
+     * Navigation
+     */
+    navigate(screenName) {
+        if (!this.dom.screens[screenName]) {
+            console.warn(`Screen "${screenName}" not found`);
+            return;
+        }
+        
+        // Update nav active state
+        document.querySelectorAll('.nav-item').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.screen === screenName);
+        });
+        
+        this.showScreen(screenName);
+        this.state.ui.currentScreen = screenName;
+    }
+
+    showScreen(screenName) {
+        // Hide all screens
+        Object.values(this.dom.screens).forEach(screen => {
+            screen.classList.add('hidden');
+        });
+        
+        // Show target screen
+        const target = this.dom.screens[screenName];
+        if (target) {
+            target.classList.remove('hidden');
+            // Refresh screen content if needed
+            if (screenName === 'dashboard') {
+                this.refreshDashboard();
+            }
+        }
+    }
+
+    /**
+     * PIN System
+     */
+    handlePinInput(digit) {
+        const inputs = document.querySelectorAll('.pin-digit');
+        const emptyIndex = Array.from(inputs).findIndex(inp => !inp.value);
+        
+        if (emptyIndex >= 0 && emptyIndex < 4) {
+            inputs[emptyIndex].value = digit;
+            inputs[emptyIndex].focus();
+            
+            // Auto-submit if complete
+            if (emptyIndex === 3) {
+                this.verifyPIN();
+            }
+        }
+    }
+
+    handlePinBackspace() {
+        const inputs = document.querySelectorAll('.pin-digit');
+        const filledInputs = Array.from(inputs).filter(inp => inp.value);
+        
+        if (filledInputs.length > 0) {
+            filledInputs[filledInputs.length - 1].value = '';
+            filledInputs[filledInputs.length - 1].focus();
+        }
+    }
+
+    async verifyPIN() {
+        const inputs = document.querySelectorAll('.pin-digit');
+        const enteredPIN = Array.from(inputs).map(inp => inp.value).join('');
+        
+        if (enteredPIN.length < 4) {
+            showToast('⚠️ يرجى إدخال 4 أرقام', 'warning');
+            return;
+        }
+        
+        // Hash entered PIN
+        const hashed = await CryptoUtils.hashPIN(enteredPIN);
+        
+        // Compare with stored
+        if (this.state.pin === hashed || !this.state.pin) {
+            // First time: save new PIN
+            if (!this.state.pin) {
+                this.state.pin = hashed;
+                StorageUtils.set('pin', hashed, { encrypt: true });
+                showToast('✅ تم تعيين رمز الدخول بنجاح', 'success');
+            } else {
+                showToast('✅ مرحباً بك في Alzein', 'success');
+            }
+            
+            // Clear inputs
+            inputs.forEach(inp => inp.value = '');
+            
+            // Navigate to dashboard
+            this.state.user = { id: 'local_user' };
+            this.showScreen('dashboard');
+        } else {
+            showToast('❌ رمز الدخول غير صحيح', 'error');
+            inputs.forEach(inp => {
+                inp.value = '';
+                inp.style.borderColor = 'var(--neon-red)';
+                setTimeout(() => inp.style.borderColor = '', 300);
+            });
+        }
+    }
+
+    /**
+     * Privacy Mode
+     */
+    applyPrivacyMode(enabled) {
+        document.body.classList.toggle('privacy-active', enabled);
+        // Save preference
+        this.saveSettings();
+    }
+
+    /**
+     * Modal System
+     */
+    openModal(modalName) {
+        // Dynamic modal loading (to be expanded)
+        console.log(`Opening modal: ${modalName}`);
+        // In production: load modal component dynamically
+        showToast(`🔧 ميزة "${modalName}" قيد التطوير`, 'info');
+    }
+
+    closeModal() {
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.classList.add('hidden');
+        });
+    }
+
+    /**
+     * Dashboard Refresh
+     */
+    refreshDashboard() {
+        // Update stats from state
+        const stats = this.calculateStats();
+        
+        document.querySelector('[data-key="netBalance"]').textContent = 
+            this.formatAmount(stats.netBalance);
+        document.querySelector('[data-key="totalReceivable"]').textContent = 
+            this.formatAmount(stats.receivable);
+        document.querySelector('[data-key="totalPayable"]').textContent = 
+            this.formatAmount(stats.payable);
+        document.querySelector('[data-key="peopleCount"]').textContent = 
+            this.state.data.people.length;
+        document.querySelector('[data-key="transactionsCount"]').textContent = 
+            this.state.data.transactions.length;
+        document.querySelector('[data-key="accountsCount"]').textContent = 
+            this.state.data.accounts.length;
+        
+        // Update recent transactions
+        this.renderRecentTransactions();
+        
+        // Update client ID display
+        const clientId = StorageUtils.get('client_id') || 'ALZ-' + Math.random().toString(36).substr(2, 8).toUpperCase();
+        document.getElementById('client-id').textContent = clientId;
+    }
+
+    calculateStats() {
+        let receivable = 0, payable = 0;
+        
+        this.state.data.transactions.forEach(tx => {
+            if (tx.type === 'receive') receivable += parseFloat(tx.amount) || 0;
+            if (tx.type === 'give') payable += parseFloat(tx.amount) || 0;
+        });
+        
+        return {
+            netBalance: receivable - payable,
+            receivable,
+            payable
+        };
+    }
+
+    renderRecentTransactions() {
+        const container = document.getElementById('recent-transactions');
+        if (!container) return;
+        
+        const recent = this.state.data.transactions
+            .slice(-5)
+            .reverse();
+        
+        if (recent.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">لا توجد معاملات بعد</p>';
+            return;
+        }
+        
+        container.innerHTML = recent.map(tx => `
+            <div class="transaction-item ${tx.type}">
+                <div class="tx-info">
+                    <div class="tx-name">${tx.personName || 'غير محدد'}</div>
+                    <div class="tx-meta">${tx.date || new Date().toLocaleDateString('ar')}</div>
+                </div>
+                <div class="tx-amount ${tx.type === 'receive' ? 'positive' : 'negative'}">
+                    ${tx.type === 'give' ? '-' : '+'}${this.formatAmount(tx.amount)} ${tx.currency}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    formatAmount(amount, currency = null) {
+        const num = parseFloat(amount) || 0;
+        const curr = currency || this.state.defaultCurrency;
+        
+        try {
+            return new Intl.NumberFormat('ar', {
+                style: 'currency',
+                currency: curr,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num).replace(curr, '').trim();
+        } catch {
+            return num.toFixed(2);
+        }
+    }
+
+    /**
+     * Persistence
+     */
+    saveSettings() {
+        StorageUtils.set('settings', {
+            defaultCurrency: this.state.defaultCurrency,
+            privacyMode: this.state.privacyMode,
+            exchangeRates: this.state.exchangeRates
+        });
+    }
+
+    saveData() {
+        StorageUtils.set('user_data', this.state.data);
+    }
+
+    /**
+     * UI Helpers
+     */
+    hideLoading() {
+        setTimeout(() => {
+            this.dom.loading?.classList.add('hidden');
+        }, 800); // Minimum loading time for UX
+    }
 }
 
-export { AlzeinApp };
+// Initialize App
+const app = new AlzeinApp();
+document.addEventListener('DOMContentLoaded', () => {
+    app.init().catch(err => {
+        console.error('🔥 App initialization failed:', err);
+        showToast('❌ فشل تحميل التطبيق', 'error');
+    });
+});
+
+// Export for module access
+export { app, AppState, StorageUtils, CryptoUtils, showToast };
