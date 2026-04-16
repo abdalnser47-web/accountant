@@ -1,0 +1,9 @@
+{
+  "@@locale": "en",
+  "appName": "Expense Manager",
+  "welcome": "Welcome",
+  "continue": "Continue",
+  "loading": "Loading...",
+  "home": "Home",
+  "settings": "Settings"
+}
