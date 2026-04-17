@@ -4,21 +4,20 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import 'core/routing/app_router.dart';
 import 'core/theme/app_theme.dart';
-import 'core/l10n/locale_provider.dart';
-import 'l10n/app_localizations.dart'; // يتم توليده تلقائيًا
+import 'presentation/routers/app_router.dart';
+import 'presentation/screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  
   // تهيئة Firebase بشكل آمن (لن يتعطل التطبيق إذا لم يتم الربط بعد)
   try {
     await Firebase.initializeApp();
   } catch (e) {
     debugPrint('Firebase init skipped: $e');
   }
-
+  
   // تثبيت الاتجاه العمودي مناسب لتطبيقات المالية
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   
@@ -27,39 +26,45 @@ void main() async {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
   ));
-
-  runApp(const ProviderScope(child: ExpenseManagerApp()));
+  
+  runApp(
+    const ProviderScope(
+      child: MyApp(),
+    ),
+  );
 }
 
-class ExpenseManagerApp extends ConsumerWidget {
-  const ExpenseManagerApp({super.key});
-
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+  
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final currentLocale = ref.watch(localeProvider);
-    final isRTL = currentLocale.languageCode == 'ar';
-
+  Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: AppLocalizations.of(context)!.appName,
+      title: 'مدير حساباتي',
       debugShowCheckedModeBanner: false,
-      routerConfig: appRouter,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system, // تبديل تلقائي حسب إعدادات الجهاز
-      locale: currentLocale,
-      supportedLocales: const [Locale('ar'), Locale('en')],
+      
+      // دعم اللغتين العربية والإنجليزية
+      locale: const Locale('ar'),
+      supportedLocales: const [
+        Locale('ar'), // العربية
+        Locale('en'), // الإنجليزية
+      ],
       localizationsDelegates: const [
-        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder: (context, child) {
-        return Directionality(
-          textDirection: isRTL ? TextDirection.rtl : TextDirection.ltr,
-          child: child!,
-        );
-      },
+      
+      // الثيم
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.system, // استخدام إعداد النظام
+      
+      // التوجيه
+      routerConfig: AppRouter.router,
+      
+      // الصفحة الرئيسية
+      home: const HomeScreen(),
     );
   }
 }

@@ -1,5 +1,5 @@
 name: expense_manager
-description: Professional Double-Entry Accounting & Expense Manager
+description: Professional Double-Entry Accounting & Expense Manager with Offline Support
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -13,51 +13,83 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
-  # State Management
+  # --- State Management ---
   flutter_riverpod: ^2.5.1
   riverpod_annotation: ^2.3.5
 
-  # Routing
+  # --- Routing ---
   go_router: ^14.2.0
 
-  # Database & Offline-First
+  # --- Database & Offline-First ---
   drift: ^2.18.0
   sqlite3_flutter_libs: ^0.5.24
   path_provider: ^2.1.4
   path: ^1.9.0
 
-  # Firebase (جاهز للربط لاحقًا)
+  # --- Firebase (Ready for Integration) ---
   firebase_core: ^3.3.0
   firebase_auth: ^5.1.4
   cloud_firestore: ^5.2.1
   firebase_analytics: ^11.2.1
   firebase_messaging: ^15.0.4
+  firebase_storage: ^12.1.1
 
-  # Monetization
+  # --- UI & Charts ---
+  fl_chart: ^0.69.0
+  google_fonts: ^6.2.1
+  shimmer: ^3.0.0
+  flutter_svg: ^2.0.10+1
+
+  # --- Reporting & Export ---
+  pdf: ^3.11.0
+  printing: ^5.13.0
+  open_file: ^3.3.2
+
+  # --- Monetization ---
   in_app_purchase: ^3.2.0
   google_mobile_ads: ^5.1.0
 
-  # Reporting & Export
-  pdf: ^3.11.0
-  printing: ^5.13.0
-
-  # Utils & Security
-  intl: ^0.19.0
-  fl_chart: ^0.69.0
-  shared_preferences: ^2.3.2
-  flutter_secure_storage: ^9.2.2
+  # --- Security & Biometrics ---
   local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.2
+
+  # --- Utils ---
+  intl: ^0.19.0
+  shared_preferences: ^2.3.2
+  connectivity_plus: ^6.0.5
+  url_launcher: ^6.3.0
+  image_picker: ^1.1.2
+  uuid: ^4.4.2
+  equatable: ^2.0.5
+  dartz: ^0.10.1              # للتعامل مع الأخطاء بشكل وظيفي (Either)
+  freezed_annotation: ^2.4.4  # للـ Immutable Classes
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  
+  # Code Generation
   drift_dev: ^2.18.0
   riverpod_generator: ^2.4.0
   build_runner: ^2.4.12
+  freezed: ^2.5.7
+  json_serializable: ^6.8.0
 
 flutter:
   uses-material-design: true
   generate: true
+  
   assets:
     - assets/images/
+    - assets/icons/
+    - assets/logo/
+  
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+        - asset: assets/fonts/Cairo-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Cairo-SemiBold.ttf
+          weight: 600

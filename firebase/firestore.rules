@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users can only access their own data
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public categories (read-only for all authenticated users)
+    match /categories/{categoryId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only admins can modify
+    }
+    
+    // Transactions - only accessible by owner
+    match /transactions/{transactionId} {
+      allow read, write: if request.auth != null && 
+                           request.auth.uid == resource.data.userId;
+    }
+    
+    // Accounts - only accessible by owner
+    match /accounts/{accountId} {
+      allow read, write: if request.auth != null && 
+                          request.auth.uid == resource.data.userId;
+    }
+  }
+}
